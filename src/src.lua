@@ -1,9 +1,9 @@
 local Players = game:GetService("Players")
 
 local UniqueCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890"
-local StateMachineFolder = game.path.to.StateMachines
+local StateMachineFolder = game:GetService("ServerStorage").SS_Assets.Modules.Components.StateMachines
 
-local EntityManager = {
+local EntityComponentManager = {
 	Entities = {},
 	Attributes = {},
 }
@@ -32,15 +32,17 @@ local function CreateStateMachine(entity, stateModule)
 			end
 
 			if self.CurrentState and self.CurrentState.Exit then
-				self.CurrentState.Exit(entity, ...)
+				self.CurrentState.Exit(entity.Player or entity.Character, ...)
 			end
 
 			self.CurrentState = state
-			entity.Player:SetAttribute("CurrentState", newState)
+			if entity.Player then
+				entity.Player:SetAttribute("CurrentState", newState)
+			end
 			entity.Character:SetAttribute("CurrentState", newState)
 
 			if state.Enter then
-				state.Enter(entity, ...)
+				state.Enter(entity.Player or entity.Character, ...)
 			end
 		end,
 
@@ -52,7 +54,7 @@ local function CreateStateMachine(entity, stateModule)
 				return
 			end
 
-			self.CurrentState[action](entity, ...)
+			self.CurrentState[action](entity.Player or entity.Character, ...)
 
 			local nextState = self.CurrentState[action .. "NextState"]
 			if nextState then
@@ -72,30 +74,31 @@ local function CreateStateMachine(entity, stateModule)
 	return machine
 end
 
-function EntityManager:CreateEntity(source, isPlayer, behaviorModule, data)
+function EntityComponentManager:CreateEntity(source, behaviorModule, data)
 	if not source:FindFirstChild("Humanoid") and not source:IsA("Player") then
 		return
 	end
 
 	local Character = source
+	local IsPlayer = false
 
-	if source:IsA("Player") then
-		Character = source.Character
+	if game.Players:GetPlayerFromCharacter(Character) then
+		source = game.Players:GetPlayerFromCharacter(Character)
+		IsPlayer = true
 	end
 
 	local entityId = CreateUniqueID()
 	local entity = {
-		Id = entityId,
 		Player = source,
 		Character = Character,
 		StateMachine = nil,
-		Data = data or {},
+		Data = data,
 	}
 
 	entity.StateMachine = CreateStateMachine(entity, StateMachineFolder:FindFirstChild(behaviorModule))
 	self.Entities[entityId] = entity
 
-	if isPlayer then
+	if IsPlayer then
 		source:SetAttribute("EntityID", entityId)
 	end
 	entity.Character:SetAttribute("EntityID", entityId)
@@ -105,7 +108,7 @@ function EntityManager:CreateEntity(source, isPlayer, behaviorModule, data)
 	end
 
 	if data.Weapon then
-		entity.Character:SetAttribute("Weapon", data.Weapon)
+		entity.Character:SetAttribute("Weapon", data.Weapon.Value)
 	end
 
 	if entity.Character:FindFirstChildOfClass("Humanoid") then
@@ -117,7 +120,7 @@ function EntityManager:CreateEntity(source, isPlayer, behaviorModule, data)
 	return entity
 end
 
-function EntityManager:DestroyEntity(entityId)
+function EntityComponentManager:DestroyEntity(entityId)
 	local entity = self.Entities[entityId]
 	if not entity then
 		return
@@ -133,38 +136,23 @@ function EntityManager:DestroyEntity(entityId)
 	self.Entities[entityId] = nil
 end
 
-function EntityManager:SetState(entityId, newState, ...)
+function EntityComponentManager:SetState(entityId, newState, ...)
 	local entity = self.Entities[entityId]
 	if entity and entity.StateMachine then
 		entity.StateMachine:SetState(newState, ...)
 	end
 end
 
-function EntityManager:TriggerAction(entityId, action, ...)
+function EntityComponentManager:TriggerAction(entityId, action, ...)
 	local entity = self.Entities[entityId]
 	if entity and entity.StateMachine then
 		entity.StateMachine:Trigger(action, ...)
 	end
 end
 
-function EntityManager:GetEntity(entityId)
+function EntityComponentManager:GetEntity(entityId)
 	return self.Entities[entityId]
 end
 
-function EntityManager:GetEntityByCharacter(character)
-	for _, entity in pairs(self.Entities) do
-		if entity.Character == character then
-			return entity
-		end
-	end
-end
 
-function EntityManager:GetEntityByPlayer(player)
-	for _, entity in pairs(self.Entities) do
-		if entity.Player == player then
-			return entity
-		end
-	end
-end
-
-return EntityManager
+return EntityComponentManager
